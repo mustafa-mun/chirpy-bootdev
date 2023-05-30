@@ -13,7 +13,7 @@ func main() {
 		Addr:    ":" + port,
 		Handler: corsMux,
 	}
-	server.ListenAndServe()
+	server.ListenAndServe()	
 }
 
 // Add CORS headers to response
