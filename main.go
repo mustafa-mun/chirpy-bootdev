@@ -9,6 +9,7 @@ func main() {
 	mux := http.NewServeMux()
 	corsMux := middlewareCors(mux)
 	mux.Handle("/", http.FileServer(http.Dir(".")))
+	mux.HandleFunc("/healthz", healthzHandler)
 	server := &http.Server{
 		Addr:    ":" + port,
 		Handler: corsMux,
@@ -28,4 +29,10 @@ func middlewareCors(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func healthzHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
 }
