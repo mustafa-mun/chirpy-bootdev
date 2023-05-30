@@ -3,6 +3,8 @@ package main
 import (
 	"net/http"
 	"strconv"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type apiConfig struct {
@@ -12,17 +14,21 @@ type apiConfig struct {
 func main() {
 	port := "8080"
 	filepathRoot := "."
-	mux := http.NewServeMux()
-	corsMux := middlewareCors(mux)
-	apiCfg := apiConfig{fileserverHits: 0}
-	mux.Handle("/", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(filepathRoot))))
-	mux.HandleFunc("/healthz", healthzHandler)
-	mux.HandleFunc("/metrics", apiCfg.metricsHandler)
+	r := chi.NewRouter()
+	corsMux := middlewareCors(r)
+	apiCfg := &apiConfig{fileserverHits: 0}
+
+	r.Use(apiCfg.middlewareMetricsInc) 
+
+	r.Get("/healthz", healthzHandler)
+	r.Get("/metrics", apiCfg.metricsHandler)
+	r.Mount("/", http.FileServer(http.Dir(filepathRoot))) 
+
 	server := &http.Server{
 		Addr:    ":" + port,
 		Handler: corsMux,
 	}
-	server.ListenAndServe()	
+	server.ListenAndServe()
 }
 
 // Add CORS headers to response
@@ -31,7 +37,7 @@ func middlewareCors(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers", "*")
-		if r.Method == "OPTIONS" {
+		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -45,8 +51,12 @@ func healthzHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler{
+func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		cfg.fileserverHits += 1
 		next.ServeHTTP(w, r)
 	})
