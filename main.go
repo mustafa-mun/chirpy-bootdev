@@ -2,7 +2,7 @@ package main
 
 import (
 	"net/http"
-	"strconv"
+	"text/template"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -16,6 +16,7 @@ func main() {
 	filepathRoot := "."
 	r := chi.NewRouter()
 	apiRouter := chi.NewRouter()
+	adminRouter := chi.NewRouter()
 	corsMux := middlewareCors(r)
 	apiCfg := &apiConfig{fileserverHits: 0}
 
@@ -23,10 +24,11 @@ func main() {
 	r.Handle("/app", fsHandler)
 	r.Handle("/app/*", fsHandler)
 	r.Mount("/api", apiRouter)
+	r.Mount("/admin", adminRouter)
 
 
 	apiRouter.Get("/healthz", healthzHandler)
-	apiRouter.Get("/metrics", apiCfg.metricsHandler)
+	adminRouter.Get("/metrics", apiCfg.metricsHandler)
 
 	server := &http.Server{
 		Addr:    ":" + port,
@@ -66,7 +68,29 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
+type Context struct {
+	Hits int
+}
+
 func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Hits: " + strconv.Itoa(cfg.fileserverHits)))
+	const doc = `
+	<html>
+
+	<body>
+			<h1>Welcome, Chirpy Admin</h1>
+			<p>Chirpy has been visited {{.Hits}} times!</p>
+	</body>
+	
+	</html>
+	`
+
+	w.Header().Add("Content Type", "text/html")
+	// The template name "template" does not matter here
+	templates := template.New("template")
+	// "doc" is the constant that holds the HTML content
+	templates.New("doc").Parse(doc)
+	context := Context{
+		Hits: cfg.fileserverHits,
+	}
+  templates.Lookup("doc").Execute(w, context)
 }
