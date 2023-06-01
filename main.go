@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"text/template"
@@ -30,7 +31,7 @@ func main() {
 
 
 	apiRouter.Get("/healthz", healthzHandler)
-	apiRouter.Post("/validate_chirp", validateChirpHandler)
+	apiRouter.Post("/chirps", postChirpHandler)
 	adminRouter.Get("/metrics", apiCfg.metricsHandler)
 
 	server := &http.Server{
@@ -98,7 +99,8 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
   templates.Lookup("doc").Execute(w, context)
 }
 
-func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
+
+func postChirpHandler(w http.ResponseWriter, r *http.Request) {
 	// First decode the json request body
 	type parameters struct {
 		// these tags indicate how the keys in the JSON should be mapped to the struct fields
@@ -126,31 +128,30 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 		Cleaned_body string `json:"cleaned_body"`
 	}
 
-	// clean the body 
+	// validate the request body
 	badWords := []string{"kerfuffle", "sharbert", "fornax"}
-	cleaned_str := cleanString(params.Body, badWords)
+	reqBody, err := validateReqBody(params.Body, badWords)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
-
+	// save to database.json insteads
 	respBody := returnVals{
-			Cleaned_body: cleaned_str,
+			Cleaned_body: reqBody,
 	}
 	respondWithJSON(w, 200, respBody)
 }
 
 
-func cleanString(str string, badWords []string) string{
-	strSlice := strings.Split(str, " ")
-
-	for i := 0; i < len(badWords); i++ {
-		for j := 0; j < len(strSlice); j++ {
-			lowered_word := strings.ToLower(strSlice[j])
-			if badWords[i] == lowered_word {
-				censoredWord := "****"
-				strSlice[j] = censoredWord
-			}
+func validateReqBody(str string, badWords []string) (string, error){
+	lowered_str := strings.ToLower(str)
+	for _, word := range badWords {
+		if strings.Contains(lowered_str, word) {
+			return "", errors.New("request body includes bad words") 
 		}
 	}
-	return strings.Join(strSlice, " ")
+	return str, nil
 }
 
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
