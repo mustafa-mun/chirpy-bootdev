@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"text/template"
 
 	"github.com/go-chi/chi/v5"
@@ -122,25 +123,48 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 	// Chirp is valid
 
 	type returnVals struct {
-		Valid bool `json:"valid"`
+		Cleaned_body string `json:"cleaned_body"`
 	}
+
+	// clean the body 
+	badWords := []string{"kerfuffle", "sharbert", "fornax"}
+	cleaned_str := cleanString(params.Body, badWords)
+
+
 	respBody := returnVals{
-			Valid: true,
+			Cleaned_body: cleaned_str,
 	}
-	dat, err := json.Marshal(respBody)
+	respondWithJSON(w, 200, respBody)
+}
+
+
+func cleanString(str string, badWords []string) string{
+	strSlice := strings.Split(str, " ")
+
+	for i := 0; i < len(badWords); i++ {
+		for j := 0; j < len(strSlice); j++ {
+			lowered_word := strings.ToLower(strSlice[j])
+			if badWords[i] == lowered_word {
+				censoredWord := "****"
+				strSlice[j] = censoredWord
+			}
+		}
+	}
+	return strings.Join(strSlice, " ")
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	dat, err := json.Marshal(payload)
 	if err != nil {
 	w.WriteHeader(500)
 	return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(code)
 	w.Write(dat)
-
 }
 
-
-
-func respondWithError(w http.ResponseWriter, errorCode int, errorStr string) {
+func respondWithError(w http.ResponseWriter, code int, errorStr string) {
 	type returnVals struct {
 		Error string `json:"error"`
 	}
@@ -153,6 +177,7 @@ func respondWithError(w http.ResponseWriter, errorCode int, errorStr string) {
 	return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(errorCode)
+	w.WriteHeader(code)
 	w.Write(dat)
 }
+
