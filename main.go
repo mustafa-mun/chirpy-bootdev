@@ -8,6 +8,7 @@ import (
 	"text/template"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mustafa-mun/chirpy-bootdev/internal/database"
 )
 
 type apiConfig struct {
@@ -22,6 +23,9 @@ func main() {
 	adminRouter := chi.NewRouter()
 	corsMux := middlewareCors(r)
 	apiCfg := &apiConfig{fileserverHits: 0}
+
+	// Create database
+	database.NewDB()
 
 	fsHandler := apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot))))
 	r.Handle("/app", fsHandler)
@@ -124,6 +128,8 @@ func postChirpHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Chirp is valid
 
+	// Create new Chirp with database package
+
 	type returnVals struct {
 		Cleaned_body string `json:"cleaned_body"`
 	}
@@ -136,7 +142,7 @@ func postChirpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// save to database.json insteads
+	// save to database.json instead
 	respBody := returnVals{
 			Cleaned_body: reqBody,
 	}
