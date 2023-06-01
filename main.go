@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"text/template"
 
@@ -28,6 +29,7 @@ func main() {
 
 
 	apiRouter.Get("/healthz", healthzHandler)
+	apiRouter.Post("/validate_chirp", validateChirpHandler)
 	adminRouter.Get("/metrics", apiCfg.metricsHandler)
 
 	server := &http.Server{
@@ -93,4 +95,64 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 		Hits: cfg.fileserverHits,
 	}
   templates.Lookup("doc").Execute(w, context)
+}
+
+func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
+	// First decode the json request body
+	type parameters struct {
+		// these tags indicate how the keys in the JSON should be mapped to the struct fields
+		// the struct fields must be exported (start with a capital letter) if you want them parsed
+		Body string `json:"body"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		// handle decode parameters error 
+		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
+		return
+	}
+
+	if len(params.Body) > 140 {
+		respondWithError(w, http.StatusBadRequest, "Chirp is too long")
+		return
+	}
+
+	// Chirp is valid
+
+	type returnVals struct {
+		Valid bool `json:"valid"`
+	}
+	respBody := returnVals{
+			Valid: true,
+	}
+	dat, err := json.Marshal(respBody)
+	if err != nil {
+	w.WriteHeader(500)
+	return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(dat)
+
+}
+
+
+
+func respondWithError(w http.ResponseWriter, errorCode int, errorStr string) {
+	type returnVals struct {
+		Error string `json:"error"`
+	}
+	respBody := returnVals{
+		Error: errorStr,
+	}
+	dat, err := json.Marshal(respBody)
+	if err != nil {
+	w.WriteHeader(500)
+	return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(errorCode)
+	w.Write(dat)
 }
