@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -37,6 +39,7 @@ func main() {
 
 	apiRouter.Get("/healthz", healthzHandler)
 	apiRouter.Get("/chirps", getChirpsHandler)
+	apiRouter.Get("/chirps/{chirpId}", getSingleChirpHandler)
 	apiRouter.Post("/chirps", postChirpHandler)
 	adminRouter.Get("/metrics", apiCfg.metricsHandler)
 
@@ -46,6 +49,9 @@ func main() {
 	}
 	server.ListenAndServe()
 }
+
+// Create new database
+var db *database.DB
 
 func initDB() {
 	// Initialize the database connection
@@ -114,9 +120,6 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
   templates.Lookup("doc").Execute(w, context)
 }
 
-
-var db *database.DB
-
 func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	// Get all chirps
 	chirps, err := db.GetChirps()
@@ -126,6 +129,40 @@ func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// send chirps with JSON
 	respondWithJSON(w, http.StatusOK, chirps)
+}
+
+func getSingleChirpHandler(w http.ResponseWriter, r *http.Request) {
+	// get chirpId from url parameter
+	id := chi.URLParam(r, "chirpId")
+
+	// Read database file
+	data, err := os.ReadFile("database.json")
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// Decode JSON data into DBStructure object
+	var structure database.DBStructure
+	err = json.Unmarshal(data, &structure)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	intId, err := strconv.Atoi(id)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	chirp, ok := structure.Chirps[intId]
+  // chirp not found
+	if !ok {
+		respondWithError(w, http.StatusNotFound, "not found")
+	} 
+  // chirp found
+	respondWithJSON(w, http.StatusOK, chirp)
+
 }
 
 func postChirpHandler(w http.ResponseWriter, r *http.Request) {
