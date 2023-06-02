@@ -15,11 +15,17 @@ type DB struct {
 
 type DBStructure struct {
 	Chirps map[int]Chirp `json:"chirps"`
+	Users map[int]User `json:"users"`
 }
 
 type Chirp struct {
 	ID   int    `json:"id"`
 	Body string `json:"body"`
+}
+
+type User struct {
+	ID   int    `json:"id"`
+	Email string `json:"email"`
 }
 
 // NewDB creates a new database connection
@@ -38,17 +44,18 @@ func NewDB(path string) (*DB, error) {
 	}
 	defer f.Close()
 
-	mp := make(map[int]Chirp)
-	structure := DBStructure{Chirps: mp}
+	chripMp := make(map[int]Chirp)
+	usrMp := make(map[int]User)
+	structure := DBStructure{Chirps: chripMp, Users: usrMp}
 
 	// write structure 
-	newDb.writeDB(structure)
+	newDb.WriteDB(structure)
 
 	return &newDb, nil
 }
 
 // This will have a more optimal solution
-var idCount int = 0
+var chirpIdCount int = 0
 
 // CreateChirp creates a new chirp and saves it to disk
 func (db *DB) CreateChirp(body string) (Chirp, error) {
@@ -56,7 +63,7 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 	defer db.mux.Unlock()
 
 	// Read database file
-	structure, err := db.loadDB()
+	structure, err := db.LoadDB()
 
 	if err != nil {
 		return Chirp{}, err
@@ -70,23 +77,59 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 		chirps = make(map[int]Chirp)
 	}
 
-	idCount += 1
-	newChirp := Chirp{ID: idCount, Body: body}
-	chirps[idCount] = newChirp
+	chirpIdCount += 1
+	newChirp := Chirp{ID: chirpIdCount, Body: body}
+	chirps[chirpIdCount] = newChirp
 
-	// Update the idCount in the DBStructure
+	// Update the chirpIdCount in the DBStructure
 	structure.Chirps = chirps
 	
 	// Write the updated data to the database file
-	db.writeDB(structure)
+	db.WriteDB(structure)
 
 	return newChirp, nil
 }
 
+var userIdCount = 0
+
+// CreateChirp creates a new chirp and saves it to disk
+func (db *DB) CreateUser(email string) (User, error) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	// Read database file
+	structure, err := db.LoadDB()
+
+	if err != nil {
+		return User{}, err
+	}
+
+	// Access the Users map
+	users := structure.Users
+
+	// Initialize users map if it is nil
+	if users == nil {
+		users = make(map[int]User)
+	}
+
+	userIdCount += 1
+	newUser := User{ID: userIdCount, Email: email}
+	users[userIdCount] = newUser
+
+	// Update the idCount in the DBStructure
+	structure.Users = users
+	
+	// Write the updated data to the database file
+	db.WriteDB(structure)
+
+	return newUser, nil
+}
+
+
 // GetChirps returns all chirps in the database
 func (db *DB) GetChirps() ([]Chirp, error) {
 	// Read database file
-	structure, err := db.loadDB()
+	structure, err := db.LoadDB()
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +151,7 @@ func (db *DB) GetChirps() ([]Chirp, error) {
 }
 
 // loadDB reads the database file into memory
-func (db *DB) loadDB() (DBStructure, error) {
+func (db *DB) LoadDB() (DBStructure, error) {
 	// Read database file
 	data, err := os.ReadFile("database.json")
 	if err != nil {
@@ -126,7 +169,7 @@ func (db *DB) loadDB() (DBStructure, error) {
 }
 
 // writeDB writes the database file to disk
-func (db *DB) writeDB(dbStructure DBStructure) error  {
+func (db *DB) WriteDB(dbStructure DBStructure) error  {
 	data, err := json.Marshal(dbStructure)
 	if err != nil {
 		return errors.New("an error occurred when encoding database structure to JSON")

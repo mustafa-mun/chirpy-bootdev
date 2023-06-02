@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"text/template"
@@ -41,6 +40,7 @@ func main() {
 	apiRouter.Get("/chirps", getChirpsHandler)
 	apiRouter.Get("/chirps/{chirpId}", getSingleChirpHandler)
 	apiRouter.Post("/chirps", postChirpHandler)
+	apiRouter.Post("/users", postUserHandler)
 	adminRouter.Get("/metrics", apiCfg.metricsHandler)
 
 	server := &http.Server{
@@ -134,16 +134,9 @@ func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 func getSingleChirpHandler(w http.ResponseWriter, r *http.Request) {
 	// get chirpId from url parameter
 	id := chi.URLParam(r, "chirpId")
-
+	
 	// Read database file
-	data, err := os.ReadFile("database.json")
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	// Decode JSON data into DBStructure object
-	var structure database.DBStructure
-	err = json.Unmarshal(data, &structure)
+	structure, err := db.LoadDB()
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -217,8 +210,50 @@ func postChirpHandler(w http.ResponseWriter, r *http.Request) {
 			Id: newChirp.ID,
 			Body: newChirp.Body,
 	}
-	respondWithJSON(w, 201, respBody)
+	respondWithJSON(w, http.StatusCreated, respBody)
 }
+
+
+func postUserHandler(w http.ResponseWriter, r *http.Request) {
+	// First decode the json request body
+	type parameters struct {
+		// these tags indicate how the keys in the JSON should be mapped to the struct fields
+		// the struct fields must be exported (start with a capital letter) if you want them parsed
+		Email string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		// handle decode parameters error 
+		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
+		return
+	}
+
+	// Create new User with database package
+
+	// Create and save the new user
+	newUser, err := db.CreateUser(params.Email)
+
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	type returnVals struct {
+		Id int `json:"id"`
+		Email string `json:"email"`
+	}
+
+	// Return new user as a json
+	respBody := returnVals{
+			Id: newUser.ID,
+			Email: newUser.Email,
+	}
+	respondWithJSON(w, http.StatusCreated, respBody)
+}
+
 
 
 func validateReqBody(str string, badWords []string) (string, error){
