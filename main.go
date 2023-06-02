@@ -3,8 +3,11 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"text/template"
@@ -18,6 +21,16 @@ type apiConfig struct {
 }
 
 func main() {
+	dbg := flag.Bool("debug", false, "Enable debug mode")
+	flag.Parse()
+
+	if *dbg {
+		err := os.Remove("database.json")
+		if err != nil {
+			fmt.Println(os.ErrNotExist)
+		}
+	}
+
 	port := "8080"
 	filepathRoot := "."
 	r := chi.NewRouter()
