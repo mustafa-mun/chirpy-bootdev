@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"text/template"
@@ -24,8 +25,8 @@ func main() {
 	corsMux := middlewareCors(r)
 	apiCfg := &apiConfig{fileserverHits: 0}
 
-	// Create database
-	database.NewDB()
+
+	initDB()
 
 	fsHandler := apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot))))
 	r.Handle("/app", fsHandler)
@@ -35,6 +36,7 @@ func main() {
 
 
 	apiRouter.Get("/healthz", healthzHandler)
+	apiRouter.Get("/chirps", getChirpsHandler)
 	apiRouter.Post("/chirps", postChirpHandler)
 	adminRouter.Get("/metrics", apiCfg.metricsHandler)
 
@@ -43,6 +45,15 @@ func main() {
 		Handler: corsMux,
 	}
 	server.ListenAndServe()
+}
+
+func initDB() {
+	// Initialize the database connection
+	var err error
+	db, err = database.NewDB("database.json")
+	if err != nil {
+			log.Fatal(err.Error())
+	}
 }
 
 // Add CORS headers to response
@@ -104,6 +115,19 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 
+var db *database.DB
+
+func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	// Get all chirps
+	chirps, err := db.GetChirps()
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "an error occurred when getting chirps")
+		return
+	}
+	// send chirps with JSON
+	respondWithJSON(w, http.StatusOK, chirps)
+}
+
 func postChirpHandler(w http.ResponseWriter, r *http.Request) {
 	// First decode the json request body
 	type parameters struct {
@@ -131,7 +155,8 @@ func postChirpHandler(w http.ResponseWriter, r *http.Request) {
 	// Create new Chirp with database package
 
 	type returnVals struct {
-		Cleaned_body string `json:"cleaned_body"`
+		Id int `json:"id"`
+		Body string `json:"body"`
 	}
 
 	// validate the request body
@@ -142,11 +167,20 @@ func postChirpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// save to database.json instead
-	respBody := returnVals{
-			Cleaned_body: reqBody,
+	// Create and save the new chirp
+	newChirp, err := db.CreateChirp(reqBody)
+
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, err.Error())
+		return
 	}
-	respondWithJSON(w, 200, respBody)
+
+	// Return new chirp as a json
+	respBody := returnVals{
+			Id: newChirp.ID,
+			Body: newChirp.Body,
+	}
+	respondWithJSON(w, 201, respBody)
 }
 
 
@@ -187,4 +221,3 @@ func respondWithError(w http.ResponseWriter, code int, errorStr string) {
 	w.WriteHeader(code)
 	w.Write(dat)
 }
-
