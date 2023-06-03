@@ -6,6 +6,8 @@ import (
 	"os"
 	"sort"
 	"sync"
+
+	"github.com/mustafa-mun/chirpy-bootdev/internal/bcrypt"
 )
 
 type DB struct {
@@ -25,6 +27,7 @@ type Chirp struct {
 
 type User struct {
 	ID   int    `json:"id"`
+	Password string `json:"password"`
 	Email string `json:"email"`
 }
 
@@ -90,12 +93,20 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 	return newChirp, nil
 }
 
+
+
 var userIdCount = 0
 
 // CreateChirp creates a new chirp and saves it to disk
-func (db *DB) CreateUser(email string) (User, error) {
+func (db *DB) CreateUser(password, email string) (User, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock()
+
+	// check if user is already exists
+	err := db.checkDuplicateUser(email)
+	if err != nil {
+		return User{}, err
+	}
 
 	// Read database file
 	structure, err := db.LoadDB()
@@ -113,7 +124,15 @@ func (db *DB) CreateUser(email string) (User, error) {
 	}
 
 	userIdCount += 1
-	newUser := User{ID: userIdCount, Email: email}
+
+	hashedPassword, err := bcrypt.CreateHashedPassword(password)
+
+	if err != nil {
+		return User{}, err
+	}
+
+
+	newUser := User{ID: userIdCount, Password: hashedPassword, Email: email}
 	users[userIdCount] = newUser
 
 	// Update the idCount in the DBStructure
@@ -125,6 +144,24 @@ func (db *DB) CreateUser(email string) (User, error) {
 	return newUser, nil
 }
 
+
+func (db *DB) checkDuplicateUser(email string) error {
+	// Read database file
+	structure, err := db.LoadDB()
+	if err != nil {
+		return err
+	}
+
+	users := structure.Users
+
+	for _, user := range users {
+		if user.Email == email {
+			return errors.New("user already exists")
+		}
+	}
+
+	return nil
+}
 
 // GetChirps returns all chirps in the database
 func (db *DB) GetChirps() ([]Chirp, error) {

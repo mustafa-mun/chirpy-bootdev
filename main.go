@@ -13,6 +13,7 @@ import (
 	"text/template"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mustafa-mun/chirpy-bootdev/internal/bcrypt"
 	"github.com/mustafa-mun/chirpy-bootdev/internal/database"
 )
 
@@ -54,6 +55,7 @@ func main() {
 	apiRouter.Get("/chirps/{chirpId}", getSingleChirpHandler)
 	apiRouter.Post("/chirps", postChirpHandler)
 	apiRouter.Post("/users", postUserHandler)
+	apiRouter.Post("/login", loginHandler)
 	adminRouter.Get("/metrics", apiCfg.metricsHandler)
 
 	server := &http.Server{
@@ -232,6 +234,7 @@ func postUserHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		// these tags indicate how the keys in the JSON should be mapped to the struct fields
 		// the struct fields must be exported (start with a capital letter) if you want them parsed
+		Password string `json:"password"`
 		Email string `json:"email"`
 	}
 
@@ -247,7 +250,7 @@ func postUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Create new User with database package
 
 	// Create and save the new user
-	newUser, err := db.CreateUser(params.Email)
+	newUser, err := db.CreateUser(params.Password, params.Email)
 
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, err.Error())
@@ -265,6 +268,71 @@ func postUserHandler(w http.ResponseWriter, r *http.Request) {
 			Email: newUser.Email,
 	}
 	respondWithJSON(w, http.StatusCreated, respBody)
+}
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	// First decode the json request body
+	type parameters struct {
+		// these tags indicate how the keys in the JSON should be mapped to the struct fields
+		// the struct fields must be exported (start with a capital letter) if you want them parsed
+		Password string `json:"password"`
+		Email string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		// handle decode parameters error 
+		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
+		return
+	}
+
+	// Find the user by email 
+	usr := (*database.User)(nil)
+
+	// Read database file
+	structure, err := db.LoadDB()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	users := structure.Users
+
+	for _, user := range users {
+		// If user is found, set usr variable to user
+		if user.Email == params.Email {
+			usr = &user
+		}
+	}
+
+	// If usr is nil, user is not found
+	if usr == nil {
+		respondWithError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	// User is found, check the password 
+	err = bcrypt.CompareHashPassword(usr.Password, params.Password)
+
+	if err != nil {
+		// Password is wrong
+		respondWithError(w, http.StatusUnauthorized, "passwords do not match")
+		return
+	}
+
+	// Password is true, return the user (without the password)
+	type returnVals struct {
+		Id int `json:"id"`
+		Email string `json:"email"`
+	}
+
+	respBody := returnVals{
+			Id: usr.ID,
+			Email: usr.Email,
+	}
+	respondWithJSON(w, http.StatusOK, respBody)
 }
 
 
