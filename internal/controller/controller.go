@@ -219,7 +219,6 @@ func (cfg *ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// the struct fields must be exported (start with a capital letter) if you want them parsed
 		Password string `json:"password"`
 		Email string `json:"email"`
-		ExpiresInSeconds int `json:"expires_in_seconds"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -231,10 +230,6 @@ func (cfg *ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If expiration date is not given or bigger than 24 hours
-	if params.ExpiresInSeconds == 0 || params.ExpiresInSeconds > 86400 {
-		params.ExpiresInSeconds = 86400
-	} 
 
 	// Find the user by email 
 	usr := (*database.User)(nil)
@@ -270,32 +265,36 @@ func (cfg *ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Password is true, create jwt token
-	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Issuer: "chirpy",
-		IssuedAt: jwt.NewNumericDate(time.Now().UTC()),
-		ExpiresAt: &jwt.NumericDate{Time: time.Now().Add(time.Second * time.Duration(params.ExpiresInSeconds))},
-		Subject: strconv.Itoa(usr.ID),
-	})
-
-	// Sign the token with secret key
-	token, err := newToken.SignedString([]byte(cfg.JwtSecret))
+	// Password is true, create access and refresh jwt tokens
+	accessToken, err := cfg.createToken("chirpy-access", strconv.Itoa(usr.ID), 3600)
 
 	if err != nil {
 		handler.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+
+	// Sign the token with secret key
+	refreshToken, err := cfg.createToken("chirpy-refresh", strconv.Itoa(usr.ID), 5184000)
+
+	if err != nil {
+		handler.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+
 	// Return logged user with JWT token
 	type returnVals struct {
 		Id int `json:"id"`
 		Email string `json:"email"`
 		Token string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 	respBody := returnVals{
 			Id: usr.ID,
 			Email: usr.Email,
-			Token: token,
+			Token: accessToken,
+			RefreshToken: refreshToken,
 	}
 
 	handler.RespondWithJSON(w, http.StatusOK, respBody)
@@ -321,7 +320,15 @@ func (cfg *ApiConfig) UpdateUserHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+
+	// Check if token is a refresh token 
+	if tokenObj.Claims.(jwt.MapClaims)["iss"].(string) == "chirpy-refresh" {
+		handler.RespondWithError(w, http.StatusUnauthorized, "token is a refresh token")
+		return
+	}
+
 	// Token is valid, get the user id on jwtClaims
+
 	userId := tokenObj.Claims.(jwt.MapClaims)["sub"].(string)
 
 	type parameters struct {
@@ -360,4 +367,141 @@ func (cfg *ApiConfig) UpdateUserHandler(w http.ResponseWriter, r *http.Request) 
 
 	handler.RespondWithJSON(w, http.StatusOK, respBody)
 
+}
+
+
+func (cfg *ApiConfig) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	token := strings.Split(authHeader, " ")[1]
+
+	structure, err := db.LoadDB()
+
+	if err != nil {
+		handler.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	tokenObj, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		// Provide the key or validation logic for verifying the token
+		// For example, if you're using HMAC:
+		return []byte(cfg.JwtSecret), nil
+	})
+	if err != nil {
+		handler.RespondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	if !tokenObj.Valid {
+		handler.RespondWithError(w, http.StatusUnauthorized, "Invalid token")
+		return
+	}
+
+	if tokenObj.Claims.(jwt.MapClaims)["iss"].(string) != "chirpy-refresh" {
+		handler.RespondWithError(w, http.StatusUnauthorized, "token is not a refresh token")
+		return
+	}
+
+	// Check if token is revoked
+	revokedTokens := structure.RevokedTokens
+	_, ok := revokedTokens[token]
+	if ok {
+		handler.RespondWithError(w, http.StatusUnauthorized, "Revoked token")
+		return
+	}
+
+	// Token is valid create new access token
+	userId := tokenObj.Claims.(jwt.MapClaims)["sub"].(string)
+
+	accessToken, err := cfg.createToken("chirpy-access", userId, 3600)
+
+	if err != nil {
+		handler.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Return new token
+	type returnVals struct {
+		Token string `json:"token"`
+	}
+	respBody := returnVals{
+			Token: accessToken ,
+	}
+	
+	handler.RespondWithJSON(w, http.StatusOK, respBody)
+}
+
+
+func (cfg *ApiConfig) RevokeTokenHandler(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	token := strings.Split(authHeader, " ")[1]
+
+	structure, err := db.LoadDB()
+
+	if err != nil {
+		handler.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	tokenObj, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		// Provide the key or validation logic for verifying the token
+		// For example, if you're using HMAC:
+		return []byte(cfg.JwtSecret), nil
+	})
+	if err != nil {
+		handler.RespondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	if !tokenObj.Valid {
+		handler.RespondWithError(w, http.StatusUnauthorized, "Invalid token")
+		return
+	}
+
+	if tokenObj.Claims.(jwt.MapClaims)["iss"].(string) != "chirpy-refresh" {
+		handler.RespondWithError(w, http.StatusUnauthorized, "token is not a refresh token")
+		return
+	}
+
+	// Check if token is revoked
+	revokedTokens := structure.RevokedTokens
+	_, ok := revokedTokens[token]
+	if ok {
+		handler.RespondWithError(w, http.StatusUnauthorized, "Revoked token")
+		return
+	}
+
+	// Revoke the token
+	revokedTokens[token] = token
+	structure.RevokedTokens = revokedTokens
+	// Write the updated data to the database file
+	db.WriteDB(structure)
+
+	// return the revoked token 
+	// Return new token
+	type returnVals struct {
+		RevokedToken string `json:"revoked_token"`
+	}
+	respBody := returnVals{
+			RevokedToken: token,
+	}
+	handler.RespondWithJSON(w, http.StatusOK, respBody)
+}
+
+func (cfg *ApiConfig) createToken(issuer, subject string, expireDate int) (string, error){
+
+	newAccessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer: issuer,
+		IssuedAt: jwt.NewNumericDate(time.Now().UTC()),
+		ExpiresAt: &jwt.NumericDate{Time: time.Now().Add(time.Second * time.Duration(expireDate))},
+		Subject: subject,
+	})
+
+	// Sign the token with secret key
+	accessToken, err := newAccessToken.SignedString([]byte(cfg.JwtSecret))
+
+	if err != nil {
+		return "", err
+	}
+
+	return accessToken, nil
 }

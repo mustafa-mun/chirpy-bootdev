@@ -37,6 +37,9 @@ func main() {
 	apiRouter.Post("/chirps", apiCfg.PostChirpHandler)
 	apiRouter.Post("/users", apiCfg.PostUserHandler)
 	apiRouter.Post("/login", apiCfg.LoginHandler)
+	apiRouter.Post("/refresh", apiCfg.RefreshTokenHandler) // Refresh access token
+	apiRouter.Post("/revoke", apiCfg.RevokeTokenHandler) // Revoke refresh token
+
 
 	apiRouter.Put("/users", apiCfg.UpdateUserHandler)
 

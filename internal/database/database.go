@@ -18,6 +18,7 @@ type DB struct {
 type DBStructure struct {
 	Chirps map[int]Chirp `json:"chirps"`
 	Users map[int]User `json:"users"`
+	RevokedTokens map[string]string `json:"revoked_tokens"`
 }
 
 type Chirp struct {
@@ -49,7 +50,8 @@ func NewDB(path string) (*DB, error) {
 
 	chripMp := make(map[int]Chirp)
 	usrMp := make(map[int]User)
-	structure := DBStructure{Chirps: chripMp, Users: usrMp}
+	rvkMp := make(map[string]string)
+	structure := DBStructure{Chirps: chripMp, Users: usrMp, RevokedTokens: rvkMp}
 
 	// write structure 
 	newDb.WriteDB(structure)
