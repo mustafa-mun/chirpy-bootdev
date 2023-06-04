@@ -1,3 +1,4 @@
 out
 client.rest
 database.json
+.env
