@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"strconv"
 	"text/template"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/mustafa-mun/chirpy-bootdev/internal/bcrypt"
 	"github.com/mustafa-mun/chirpy-bootdev/internal/database"
 	"github.com/mustafa-mun/chirpy-bootdev/internal/handler"
@@ -164,7 +166,7 @@ func (cfg *ApiConfig) PostChirpHandler(w http.ResponseWriter, r *http.Request) {
 			Id: newChirp.ID,
 			Body: newChirp.Body,
 	}
-	handler.RespondWithJSON(w, http.StatusCreated, respBody)
+	handler.RespondWithJSON(w, http.StatusCreated, respBody)	
 }
 
 
@@ -216,6 +218,7 @@ func (cfg ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// the struct fields must be exported (start with a capital letter) if you want them parsed
 		Password string `json:"password"`
 		Email string `json:"email"`
+		ExpiresInSeconds int `json:"expires_in_seconds"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -226,6 +229,11 @@ func (cfg ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		handler.RespondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
 		return
 	}
+
+	// If expiration date is not given or bigger than 24 hours
+	if params.ExpiresInSeconds == 0 || params.ExpiresInSeconds > 86400 {
+		params.ExpiresInSeconds = 86400
+	} 
 
 	// Find the user by email 
 	usr := (*database.User)(nil)
@@ -261,15 +269,33 @@ func (cfg ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Password is true, return the user (without the password)
+	// Password is true, create jwt token
+	newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer: "chirpy",
+		IssuedAt: jwt.NewNumericDate(time.Now().UTC()),
+		ExpiresAt: &jwt.NumericDate{Time: time.Now().Add(time.Second * time.Duration(params.ExpiresInSeconds))},
+		Subject: strconv.Itoa(usr.ID),
+	})
+
+	// Sign the token with secret key
+	token, err := newToken.SignedString([]byte(cfg.JwtSecret))
+
+	if err != nil {
+		handler.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Return logged user with JWT token
 	type returnVals struct {
 		Id int `json:"id"`
 		Email string `json:"email"`
+		Token string `json:"token"`
 	}
-
 	respBody := returnVals{
 			Id: usr.ID,
 			Email: usr.Email,
+			Token: token,
 	}
+
 	handler.RespondWithJSON(w, http.StatusOK, respBody)
 }
