@@ -28,13 +28,17 @@ func main() {
 	r.Mount("/api", apiRouter)
 	r.Mount("/admin", adminRouter)
 
+	adminRouter.Get("/metrics", apiCfg.MetricsHandler)
+
 	apiRouter.Get("/healthz", apiCfg.HealthzHandler)
 	apiRouter.Get("/chirps", apiCfg.GetChirpsHandler)
 	apiRouter.Get("/chirps/{chirpId}", apiCfg.GetSingleChirpHandler)
+
 	apiRouter.Post("/chirps", apiCfg.PostChirpHandler)
 	apiRouter.Post("/users", apiCfg.PostUserHandler)
 	apiRouter.Post("/login", apiCfg.LoginHandler)
-	adminRouter.Get("/metrics", apiCfg.MetricsHandler)
+
+	apiRouter.Put("/users", apiCfg.UpdateUserHandler)
 
 	server := &http.Server{
 		Addr:    ":" + os.Getenv("PORT"),

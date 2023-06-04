@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"text/template"
 	"time"
 
@@ -211,7 +212,7 @@ func (cfg *ApiConfig) PostUserHandler(w http.ResponseWriter, r *http.Request) {
 	handler.RespondWithJSON(w, http.StatusCreated, respBody)
 }
 
-func (cfg ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// First decode the json request body
 	type parameters struct {
 		// these tags indicate how the keys in the JSON should be mapped to the struct fields
@@ -298,4 +299,65 @@ func (cfg ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	handler.RespondWithJSON(w, http.StatusOK, respBody)
+}
+
+
+func (cfg *ApiConfig) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	token := strings.Split(authHeader, " ")[1]
+
+	tokenObj, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		// Provide the key or validation logic for verifying the token
+		// For example, if you're using HMAC:
+		return []byte(cfg.JwtSecret), nil
+	})
+	if err != nil {
+		handler.RespondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	if !tokenObj.Valid {
+		handler.RespondWithError(w, http.StatusUnauthorized, "Invalid token")
+		return
+	}
+
+	// Token is valid, get the user id on jwtClaims
+	userId := tokenObj.Claims.(jwt.MapClaims)["sub"].(string)
+
+	type parameters struct {
+		// these tags indicate how the keys in the JSON should be mapped to the struct fields
+		// the struct fields must be exported (start with a capital letter) if you want them parsed
+		Password string `json:"password"`
+		Email string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	decoder.Decode(&params)
+
+	// Handle user updating
+
+	intId, err := strconv.Atoi(userId)
+	if err != nil {
+		handler.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	updatedUser, err := db.UpdateUser(params.Email, params.Password, intId)
+	if err != nil {
+		handler.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// return updated user
+	type returnVals struct {
+		Id int `json:"id"`
+		Email string `json:"email"`
+	}
+	respBody := returnVals{
+			Id: updatedUser.ID,
+			Email: updatedUser.Email,
+	}
+
+	handler.RespondWithJSON(w, http.StatusOK, respBody)
+
 }

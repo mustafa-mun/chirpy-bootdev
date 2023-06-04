@@ -131,7 +131,6 @@ func (db *DB) CreateUser(password, email string) (User, error) {
 		return User{}, err
 	}
 
-
 	newUser := User{ID: userIdCount, Password: hashedPassword, Email: email}
 	users[userIdCount] = newUser
 
@@ -142,6 +141,44 @@ func (db *DB) CreateUser(password, email string) (User, error) {
 	db.WriteDB(structure)
 
 	return newUser, nil
+}
+
+func (db *DB) UpdateUser(email, password string, userId int) (User, error) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	// check if user is already exists
+	err := db.checkDuplicateUser(email)
+	if err != nil {
+		return User{}, err
+	}
+
+	// Read database file
+	structure, err := db.LoadDB()
+
+	if err != nil {
+		return User{}, err
+	}
+
+	// Access the Users map
+	users := structure.Users
+
+	hashedPassword, err := bcrypt.CreateHashedPassword(password)
+
+	if err != nil {
+		return User{}, err
+	}
+
+	updatedUser := User{ID: userId, Password: hashedPassword, Email: email}
+	users[userId] = updatedUser
+
+	// Update the idCount in the DBStructure
+	structure.Users = users
+	
+	// Write the updated data to the database file
+	db.WriteDB(structure)
+
+	return updatedUser, nil
 }
 
 
