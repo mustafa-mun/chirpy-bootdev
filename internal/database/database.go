@@ -24,6 +24,7 @@ type DBStructure struct {
 type Chirp struct {
 	ID   int    `json:"id"`
 	Body string `json:"body"`
+	AuthorId int `json:"author_id"`
 }
 
 type User struct {
@@ -63,7 +64,7 @@ func NewDB(path string) (*DB, error) {
 var chirpIdCount int = 0
 
 // CreateChirp creates a new chirp and saves it to disk
-func (db *DB) CreateChirp(body string) (Chirp, error) {
+func (db *DB) CreateChirp(body string, authorId int) (Chirp, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock()
 
@@ -83,7 +84,7 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 	}
 
 	chirpIdCount += 1
-	newChirp := Chirp{ID: chirpIdCount, Body: body}
+	newChirp := Chirp{ID: chirpIdCount, Body: body, AuthorId: authorId}
 	chirps[chirpIdCount] = newChirp
 
 	// Update the chirpIdCount in the DBStructure
@@ -233,3 +234,5 @@ func (db *DB) WriteDB(dbStructure DBStructure) error  {
 
 	return nil
 }
+
+

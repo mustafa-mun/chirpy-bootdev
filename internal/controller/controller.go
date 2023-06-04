@@ -116,7 +116,14 @@ func (cfg *ApiConfig) GetSingleChirpHandler(w http.ResponseWriter, r *http.Reque
 }
 
 func (cfg *ApiConfig) PostChirpHandler(w http.ResponseWriter, r *http.Request) {
-	// First decode the json request body
+
+	// Check auth
+	tokenObj, er := cfg.CheckJwtToken(w, r)
+	if er != nil {
+		handler.RespondWithError(w, http.StatusUnauthorized, er.Error())
+		return
+	}
+	// decode the json request body
 	type parameters struct {
 		// these tags indicate how the keys in the JSON should be mapped to the struct fields
 		// the struct fields must be exported (start with a capital letter) if you want them parsed
@@ -144,6 +151,7 @@ func (cfg *ApiConfig) PostChirpHandler(w http.ResponseWriter, r *http.Request) {
 	type returnVals struct {
 		Id int `json:"id"`
 		Body string `json:"body"`
+		AuthorId int `json:"author_id"`
 	}
 
 	// validate the request body
@@ -154,8 +162,15 @@ func (cfg *ApiConfig) PostChirpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get author id from JWT token
+	authorId := tokenObj.Claims.(jwt.MapClaims)["sub"].(string)
+	intId, err := strconv.Atoi(authorId)
+	if err != nil {
+		handler.RespondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	// Create and save the new chirp
-	newChirp, err := db.CreateChirp(reqBody)
+	newChirp, err := db.CreateChirp(reqBody, intId)
 
 	if err != nil {
 		handler.RespondWithError(w, http.StatusBadRequest, err.Error())
@@ -166,6 +181,7 @@ func (cfg *ApiConfig) PostChirpHandler(w http.ResponseWriter, r *http.Request) {
 	respBody := returnVals{
 			Id: newChirp.ID,
 			Body: newChirp.Body,
+			AuthorId: intId,
 	}
 	handler.RespondWithJSON(w, http.StatusCreated, respBody)	
 }
@@ -504,4 +520,27 @@ func (cfg *ApiConfig) createToken(issuer, subject string, expireDate int) (strin
 	}
 
 	return accessToken, nil
+}
+
+
+func (cfg *ApiConfig) CheckJwtToken(w http.ResponseWriter, r *http.Request) (*jwt.Token, error){
+	authHeader := r.Header.Get("Authorization")
+	token := strings.Split(authHeader, " ")[1]
+
+	tokenObj, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		// Provide the key or validation logic for verifying the token
+		// For example, if you're using HMAC:
+		return []byte(cfg.JwtSecret), nil
+	})
+	if err != nil {
+		handler.RespondWithError(w, http.StatusUnauthorized, err.Error())
+		return nil, err
+	}
+
+	if !tokenObj.Valid {
+		handler.RespondWithError(w, http.StatusUnauthorized, "Invalid token")
+		return nil, err
+	}
+
+	return tokenObj, nil
 }
