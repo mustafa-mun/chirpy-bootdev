@@ -387,8 +387,7 @@ func (cfg *ApiConfig) UpdateUserHandler(w http.ResponseWriter, r *http.Request) 
 
 
 func (cfg *ApiConfig) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	token := strings.Split(authHeader, " ")[1]
+	
 
 	structure, err := db.LoadDB()
 
@@ -397,20 +396,12 @@ func (cfg *ApiConfig) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	tokenObj, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
-		// Provide the key or validation logic for verifying the token
-		// For example, if you're using HMAC:
-		return []byte(cfg.JwtSecret), nil
-	})
+	tokenObj, err := cfg.CheckJwtToken(w, r)
 	if err != nil {
-		handler.RespondWithError(w, http.StatusUnauthorized, err.Error())
-		return
-	}
-
-	if !tokenObj.Valid {
 		handler.RespondWithError(w, http.StatusUnauthorized, "Invalid token")
 		return
 	}
+
 
 	if tokenObj.Claims.(jwt.MapClaims)["iss"].(string) != "chirpy-refresh" {
 		handler.RespondWithError(w, http.StatusUnauthorized, "token is not a refresh token")
@@ -419,7 +410,7 @@ func (cfg *ApiConfig) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 
 	// Check if token is revoked
 	revokedTokens := structure.RevokedTokens
-	_, ok := revokedTokens[token]
+	_, ok := revokedTokens[tokenObj.Raw]
 	if ok {
 		handler.RespondWithError(w, http.StatusUnauthorized, "Revoked token")
 		return
@@ -448,9 +439,7 @@ func (cfg *ApiConfig) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 
 
 func (cfg *ApiConfig) RevokeTokenHandler(w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	token := strings.Split(authHeader, " ")[1]
-
+	
 	structure, err := db.LoadDB()
 
 	if err != nil {
@@ -458,36 +447,28 @@ func (cfg *ApiConfig) RevokeTokenHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	tokenObj, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
-		// Provide the key or validation logic for verifying the token
-		// For example, if you're using HMAC:
-		return []byte(cfg.JwtSecret), nil
-	})
+	tokenObj, err := cfg.CheckJwtToken(w, r)
 	if err != nil {
-		handler.RespondWithError(w, http.StatusUnauthorized, err.Error())
-		return
-	}
-
-	if !tokenObj.Valid {
 		handler.RespondWithError(w, http.StatusUnauthorized, "Invalid token")
 		return
 	}
+
 
 	if tokenObj.Claims.(jwt.MapClaims)["iss"].(string) != "chirpy-refresh" {
 		handler.RespondWithError(w, http.StatusUnauthorized, "token is not a refresh token")
 		return
 	}
-
+	
 	// Check if token is revoked
 	revokedTokens := structure.RevokedTokens
-	_, ok := revokedTokens[token]
+	_, ok := revokedTokens[tokenObj.Raw]
 	if ok {
 		handler.RespondWithError(w, http.StatusUnauthorized, "Revoked token")
 		return
 	}
 
 	// Revoke the token
-	revokedTokens[token] = token
+	revokedTokens[tokenObj.Raw] = tokenObj.Raw
 	structure.RevokedTokens = revokedTokens
 	// Write the updated data to the database file
 	db.WriteDB(structure)
@@ -498,7 +479,7 @@ func (cfg *ApiConfig) RevokeTokenHandler(w http.ResponseWriter, r *http.Request)
 		RevokedToken string `json:"revoked_token"`
 	}
 	respBody := returnVals{
-			RevokedToken: token,
+			RevokedToken: tokenObj.Raw,
 	}
 	handler.RespondWithJSON(w, http.StatusOK, respBody)
 }
