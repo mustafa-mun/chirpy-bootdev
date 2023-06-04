@@ -3,8 +3,8 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
+
 	"log"
 	"net/http"
 	"os"
@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/mustafa-mun/chirpy-bootdev/internal/bcrypt"
 	"github.com/mustafa-mun/chirpy-bootdev/internal/database"
+	"github.com/mustafa-mun/chirpy-bootdev/internal/sys"
 )
 
 type apiConfig struct {
@@ -22,16 +23,13 @@ type apiConfig struct {
 }
 
 func main() {
-	dbg := flag.Bool("debug", false, "Enable debug mode")
-	flag.Parse()
 
-	if *dbg {
-		err := os.Remove("database.json")
-		if err != nil {
-			fmt.Println(os.ErrNotExist)
-		}
-	}
-
+	sys.EnableDebugMode()
+	sys.LoadDotenv()
+	jwtSecret := os.Getenv("JWT_SECRET")
+	fmt.Println(jwtSecret)
+	initDB()
+	
 	port := "8080"
 	filepathRoot := "."
 	r := chi.NewRouter()
@@ -40,8 +38,6 @@ func main() {
 	corsMux := middlewareCors(r)
 	apiCfg := &apiConfig{fileserverHits: 0}
 
-
-	initDB()
 
 	fsHandler := apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot))))
 	r.Handle("/app", fsHandler)
@@ -64,6 +60,8 @@ func main() {
 	}
 	server.ListenAndServe()
 }
+
+
 
 // Create new database
 var db *database.DB
