@@ -96,6 +96,42 @@ func (db *DB) CreateChirp(body string, authorId int) (Chirp, error) {
 	return newChirp, nil
 }
 
+func (db *DB) DeleteChirp(chirpId, authorId int) error {
+
+
+	// Read database file
+	structure, err := db.LoadDB()
+
+	if err != nil {
+		return err
+	}
+
+	// Access the Chirps map
+	chirps := structure.Chirps
+
+	// Check if chirp exists 
+	chirp, ok := chirps[chirpId]
+
+	if !ok {
+		return errors.New("chirp not found")
+	}
+
+	// Check if chirps author is user
+	if chirp.AuthorId != authorId {
+		return errors.New("you are not the owner of this chirp")
+	}
+
+	// Delete chirp
+	delete(chirps, chirpId)
+
+	// Update the chirpIdCount in the DBStructure
+	structure.Chirps = chirps
+	
+	// Write the updated data to the database file
+	db.WriteDB(structure)
+
+	return nil
+}
 var userIdCount = 0
 
 // CreateChirp creates a new chirp and saves it to disk

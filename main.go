@@ -43,6 +43,8 @@ func main() {
 
 	apiRouter.Put("/users", apiCfg.UpdateUserHandler)
 
+	apiRouter.Delete("/chirps/{chirpID}", apiCfg.DeleteChirpHandler)
+
 	server := &http.Server{
 		Addr:    ":" + os.Getenv("PORT"),
 		Handler: corsMux,

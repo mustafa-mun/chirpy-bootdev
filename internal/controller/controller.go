@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -186,6 +187,49 @@ func (cfg *ApiConfig) PostChirpHandler(w http.ResponseWriter, r *http.Request) {
 	handler.RespondWithJSON(w, http.StatusCreated, respBody)	
 }
 
+func (cfg *ApiConfig) DeleteChirpHandler(w http.ResponseWriter, r *http.Request) {
+	// Check auth
+	
+	tokenObj, err := cfg.CheckJwtToken(w, r)
+
+	if err != nil {
+		handler.RespondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	// take id from url parameter
+	id := chi.URLParam(r, "chirpID")
+	intId, err := strconv.Atoi(id)
+
+	if err != nil {
+		handler.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	authorId := tokenObj.Claims.(jwt.MapClaims)["sub"].(string)
+	intAuthorId, err := strconv.Atoi(authorId)
+
+	if err != nil {
+		handler.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	err = db.DeleteChirp(intId, intAuthorId)
+
+	if err != nil {
+		handler.RespondWithError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
+	type returnVals struct {
+		Status string `json:"status"`
+	}
+	respBody := returnVals{
+	Status: "ok",
+	}	
+
+	handler.RespondWithJSON(w, http.StatusOK, respBody)
+}
 
 func (cfg *ApiConfig) PostUserHandler(w http.ResponseWriter, r *http.Request) {
 	// First decode the json request body
@@ -506,6 +550,10 @@ func (cfg *ApiConfig) createToken(issuer, subject string, expireDate int) (strin
 
 func (cfg *ApiConfig) CheckJwtToken(w http.ResponseWriter, r *http.Request) (*jwt.Token, error){
 	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+    // Handle the case when Authorization header is missing or empty
+		return nil, errors.New("jwt token missing")
+}
 	token := strings.Split(authHeader, " ")[1]
 
 	tokenObj, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
@@ -514,7 +562,6 @@ func (cfg *ApiConfig) CheckJwtToken(w http.ResponseWriter, r *http.Request) (*jw
 		return []byte(cfg.JwtSecret), nil
 	})
 	if err != nil {
-		handler.RespondWithError(w, http.StatusUnauthorized, err.Error())
 		return nil, err
 	}
 
