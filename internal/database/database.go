@@ -93,60 +93,35 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 	return newChirp, nil
 }
 
-
-
 var userIdCount = 0
 
 // CreateChirp creates a new chirp and saves it to disk
 func (db *DB) CreateUser(password, email string) (User, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock()
-
-	// check if user is already exists
-	err := db.checkDuplicateUser(email)
-	if err != nil {
-		return User{}, err
-	}
-
-	// Read database file
-	structure, err := db.LoadDB()
-
-	if err != nil {
-		return User{}, err
-	}
-
-	// Access the Users map
-	users := structure.Users
-
-	// Initialize users map if it is nil
-	if users == nil {
-		users = make(map[int]User)
-	}
-
 	userIdCount += 1
 
-	hashedPassword, err := bcrypt.CreateHashedPassword(password)
+	createdUser, err := db.handleUserCreation(password, email, userIdCount)
 
 	if err != nil {
 		return User{}, err
 	}
-
-	newUser := User{ID: userIdCount, Password: hashedPassword, Email: email}
-	users[userIdCount] = newUser
-
-	// Update the idCount in the DBStructure
-	structure.Users = users
-	
-	// Write the updated data to the database file
-	db.WriteDB(structure)
-
-	return newUser, nil
+	return createdUser, nil
 }
 
 func (db *DB) UpdateUser(email, password string, userId int) (User, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock()
 
+	updatedUser, err := db.handleUserCreation(password, email, userId)
+
+	if err != nil {
+		return User{}, err
+	}
+	return updatedUser, nil
+}
+
+func (db *DB) handleUserCreation(password, email string, id int) (User, error) {
 	// check if user is already exists
 	err := db.checkDuplicateUser(email)
 	if err != nil {
@@ -169,8 +144,8 @@ func (db *DB) UpdateUser(email, password string, userId int) (User, error) {
 		return User{}, err
 	}
 
-	updatedUser := User{ID: userId, Password: hashedPassword, Email: email}
-	users[userId] = updatedUser
+	user := User{ID: id, Password: hashedPassword, Email: email}
+	users[id] = user
 
 	// Update the idCount in the DBStructure
 	structure.Users = users
@@ -178,7 +153,7 @@ func (db *DB) UpdateUser(email, password string, userId int) (User, error) {
 	// Write the updated data to the database file
 	db.WriteDB(structure)
 
-	return updatedUser, nil
+	return user, nil
 }
 
 
