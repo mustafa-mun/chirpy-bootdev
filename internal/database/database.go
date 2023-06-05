@@ -220,7 +220,7 @@ func (db *DB) checkDuplicateUser(email string) error {
 }
 
 // GetChirps returns all chirps in the database
-func (db *DB) GetChirps(authorQuery string) ([]Chirp, error) {
+func (db *DB) GetChirps(authorQuery, sortQuery string) ([]Chirp, error) {
 	// Read database file
 	structure, err := db.LoadDB()
 	if err != nil {
@@ -248,7 +248,10 @@ func (db *DB) GetChirps(authorQuery string) ([]Chirp, error) {
 		}
 
 		sort.Slice(rsp, func(i, j int) bool {
-			return rsp[i].ID < rsp[j].ID
+			if sortQuery == "" || sortQuery == "asc" {
+				return rsp[i].ID < rsp[j].ID
+			}
+			return rsp[i].ID > rsp[j].ID
 		})
 
 		return rsp, nil
@@ -261,7 +264,10 @@ func (db *DB) GetChirps(authorQuery string) ([]Chirp, error) {
 	}
 
 	sort.Slice(chirpsArray, func(i, j int) bool {
-    return chirpsArray[i].ID < chirpsArray[j].ID
+    if sortQuery == "" || sortQuery == "asc" {
+			return chirpsArray[i].ID < chirpsArray[j].ID
+		}
+		return chirpsArray[i].ID > chirpsArray[j].ID
 	})
 
 	return chirpsArray, nil
