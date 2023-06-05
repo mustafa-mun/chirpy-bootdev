@@ -20,6 +20,12 @@ import (
 // Create new database
 var db *database.DB
 
+type ReturnUserVals struct {
+	Id int `json:"id"`
+	Email string `json:"email"`
+	IsChirpyRed bool `json:"is_chirpy_red"`
+}
+
 func InitDB() {
 	// Initialize the database connection
 	var err error
@@ -259,18 +265,16 @@ func (cfg *ApiConfig) PostUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type returnVals struct {
-		Id int `json:"id"`
-		Email string `json:"email"`
-	}
-
+	
 	// Return new user as a json
-	respBody := returnVals{
+	respBody := ReturnUserVals{
 			Id: newUser.ID,
 			Email: newUser.Email,
+			IsChirpyRed: newUser.IsChirpyRed,
 	}
 	handler.RespondWithJSON(w, http.StatusCreated, respBody)
 }
+
 
 func (cfg *ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// First decode the json request body
@@ -347,12 +351,14 @@ func (cfg *ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	type returnVals struct {
 		Id int `json:"id"`
 		Email string `json:"email"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 		Token string `json:"token"`
 		RefreshToken string `json:"refresh_token"`
 	}
 	respBody := returnVals{
 			Id: usr.ID,
 			Email: usr.Email,
+			IsChirpyRed: usr.IsChirpyRed,
 			Token: accessToken,
 			RefreshToken: refreshToken,
 	}
@@ -416,13 +422,11 @@ func (cfg *ApiConfig) UpdateUserHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// return updated user
-	type returnVals struct {
-		Id int `json:"id"`
-		Email string `json:"email"`
-	}
-	respBody := returnVals{
+
+	respBody := ReturnUserVals{
 			Id: updatedUser.ID,
 			Email: updatedUser.Email,
+			IsChirpyRed: updatedUser.IsChirpyRed,
 	}
 
 	handler.RespondWithJSON(w, http.StatusOK, respBody)
@@ -571,4 +575,62 @@ func (cfg *ApiConfig) CheckJwtToken(w http.ResponseWriter, r *http.Request) (*jw
 	}
 
 	return tokenObj, nil
+}
+
+
+func(cfg *ApiConfig) PolkaWebhooksHandler(w http.ResponseWriter, r *http.Request) {
+	// Take body params
+	type parameters struct {
+		Event string `json:"event"`
+		Data map[string]int `json:"data"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		// handle decode parameters error 
+		handler.RespondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
+		return
+	}
+
+	respBody := struct {
+		Status int
+	} {
+		Status: http.StatusOK,
+	}
+
+	if params.Event != "user.upgraded" {
+		handler.RespondWithJSON(w, http.StatusOK, respBody)
+		return
+	}
+
+	// get users
+	structure, err := db.LoadDB() 
+
+	if err != nil {
+		handler.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	users := structure.Users
+
+	// Check if user exists
+
+	user, ok := users[params.Data["user_id"]]
+
+	if !ok {
+		handler.RespondWithError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	// User is found, make user chirpy red member
+	user.IsChirpyRed = true
+	users[params.Data["user_id"]] = user
+	structure.Users = users
+
+	db.WriteDB(structure)
+
+	// Send ok status with empty json body
+	handler.RespondWithJSON(w, http.StatusOK, make(map[string]interface{}))
 }

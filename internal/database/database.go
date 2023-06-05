@@ -31,6 +31,7 @@ type User struct {
 	ID   int    `json:"id"`
 	Password string `json:"password"`
 	Email string `json:"email"`
+	IsChirpyRed bool `json:"is_chirpy_red"`
 }
 
 // NewDB creates a new database connection
@@ -138,11 +139,14 @@ var userIdCount = 0
 func (db *DB) CreateUser(password, email string) (User, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock()
+
 	userIdCount += 1
 
 	createdUser, err := db.handleUserCreation(password, email, userIdCount)
 
 	if err != nil {
+		// revoke userId increase
+		userIdCount -= 1
 		return User{}, err
 	}
 	return createdUser, nil
@@ -183,7 +187,7 @@ func (db *DB) handleUserCreation(password, email string, id int) (User, error) {
 		return User{}, err
 	}
 
-	user := User{ID: id, Password: hashedPassword, Email: email}
+	user := User{ID: id, Password: hashedPassword, Email: email, IsChirpyRed: false}
 	users[id] = user
 
 	// Update the idCount in the DBStructure
