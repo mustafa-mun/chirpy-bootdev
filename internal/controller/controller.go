@@ -86,10 +86,14 @@ func (cfg *ApiConfig) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *ApiConfig) GetChirpsHandler(w http.ResponseWriter, r *http.Request) {
+
+	// Check if there is a author id query parameter
+	s := r.URL.Query().Get("author_id")
+
 	// Get all chirps
-	chirps, err := db.GetChirps()
+	chirps, err := db.GetChirps(s)
 	if err != nil {
-		handler.RespondWithError(w, http.StatusBadRequest, "an error occurred when getting chirps")
+		handler.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// send chirps with JSON

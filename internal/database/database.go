@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"sort"
+	"strconv"
 	"sync"
 
 	"github.com/mustafa-mun/chirpy-bootdev/internal/bcrypt"
@@ -219,7 +220,7 @@ func (db *DB) checkDuplicateUser(email string) error {
 }
 
 // GetChirps returns all chirps in the database
-func (db *DB) GetChirps() ([]Chirp, error) {
+func (db *DB) GetChirps(authorQuery string) ([]Chirp, error) {
 	// Read database file
 	structure, err := db.LoadDB()
 	if err != nil {
@@ -228,6 +229,30 @@ func (db *DB) GetChirps() ([]Chirp, error) {
 
 	// Access the Chirps map
 	chirps := structure.Chirps
+
+	// If authorQuery exists
+	if authorQuery != "" {
+		rsp := make([]Chirp, 0)
+		authorId, err := strconv.Atoi(authorQuery)
+		if err != nil {
+			return nil, err
+		}
+		for _, value := range chirps {
+			if value.AuthorId == authorId {
+				rsp = append(rsp, value)
+			}
+		}
+
+		if len(rsp) == 0 {
+			return nil, errors.New("not found")
+		}
+
+		sort.Slice(rsp, func(i, j int) bool {
+			return rsp[i].ID < rsp[j].ID
+		})
+
+		return rsp, nil
+	}
 
 	chirpsArray := make([]Chirp, 0, len(chirps))
 
