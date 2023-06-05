@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"text/template"
@@ -557,7 +558,7 @@ func (cfg *ApiConfig) CheckJwtToken(w http.ResponseWriter, r *http.Request) (*jw
 	if authHeader == "" {
     // Handle the case when Authorization header is missing or empty
 		return nil, errors.New("jwt token missing")
-}
+	}
 	token := strings.Split(authHeader, " ")[1]
 
 	tokenObj, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
@@ -579,6 +580,20 @@ func (cfg *ApiConfig) CheckJwtToken(w http.ResponseWriter, r *http.Request) (*jw
 
 
 func(cfg *ApiConfig) PolkaWebhooksHandler(w http.ResponseWriter, r *http.Request) {
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+    // Handle the case when Authorization header is missing or empty
+		handler.RespondWithError(w, http.StatusUnauthorized, "missing api key")
+		return
+	}
+	apiKey := strings.Split(authHeader, " ")[1]
+
+	if apiKey != os.Getenv("POLKA_KEY") {
+		handler.RespondWithError(w, http.StatusUnauthorized, "invalid api key")
+		return
+	}
+
 	// Take body params
 	type parameters struct {
 		Event string `json:"event"`
